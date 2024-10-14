@@ -1,18 +1,22 @@
-import { useCallback, useEffect, useState } from "react";
+import Quill from "quill";
+import { toast } from "sonner";
 import "quill/dist/quill.snow.css";
+import { Delta } from "quill/core";
 import { io, Socket } from "socket.io-client";
 import { redirect, useParams } from "next/navigation"; // Use useParams for route parameters
-import Quill from "quill";
-import { Delta } from "quill/core";
+import { useCallback, useEffect, useState } from "react";
+
+import {
+  captureFirstPageAsImage,
+  initializeQuillShortCuts,
+} from "@/utilities/utilities";
 import { Navbar } from "./Navbar";
-import { toast } from "sonner";
-// import { saveAs } from 'file-saver';
-// import { generate } from 'html-docx-js';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import CustomToolbar from "./ToolBar";
+
+// import Toolbar from "./ToolBar";
 
 const SAVE_INTERVAL_MS = 2000;
-const SAVE_VERSION_MS = 60000;
+const DOC_PREVIEW_UPDATE_INTERVAL_MS = 10 * 60 * 1000; //10 minutes
 const TOOLBAR_OPTIONS = [
   [{ header: [1, 2, 3, 4, 5, 6, false] }],
   [{ font: [] }],
@@ -23,24 +27,37 @@ const TOOLBAR_OPTIONS = [
   [{ align: [] }],
   ["image", "blockquote", "code-block"],
   ["clean"],
+  ["custom-button"],
 ];
 
 export default function TextEditor() {
   const { id: documentId } = useParams(); // Get the documentId from the route parameters
   const [docName, setDocName] = useState("");
+
+  const server = process.env.NEXT_PUBLIC_SERVER_2;
+
   const [socket, setSocket] = useState<Socket | null>(null);
   const [quill, setQuill] = useState<Quill | null>(null);
-  const server = process.env.NEXT_PUBLIC_SERVER_2;
+
+  const [color, setColor] = useState<string>("#ffffff");
+  const handleFontColorChange = (color: string) => {
+    console.log(color);
+    setColor(color);
+    if(!quill){
+      console.log("Quill not initialized");
+      return;
+    }
+    quill.format("color", '#'+color);
+  }
+  
 
   // Fetch document metadata
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch(`${server}/document-meta`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ documentId }),
-        });
+        const data = { documentId };
+        console.log(data);
+        const res = await fetch(`${server}/document-meta`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
         const result = await res.json();
         if (!res.ok) {
           toast.error(result.error);
@@ -55,7 +72,7 @@ export default function TextEditor() {
     fetchData();
   }, [documentId, server]);
 
-  // Initialize Socket.IO and Quill
+  // Ensure that Quill and Socket.IO only run on the client side
   useEffect(() => {
     const s: Socket = io("http://localhost:3001");
     setSocket(s);
@@ -132,43 +149,193 @@ export default function TextEditor() {
     wrapper.append(editor);
     const q = new Quill(editor, {
       theme: "snow",
-      modules: { toolbar: TOOLBAR_OPTIONS },
+      modules: {
+        toolbar: {
+          container: '#toolbar'
+        },
+      },
     });
+    
+    q.root.setAttribute('spellcheck', 'false'); 
+
+    initializeQuillShortCuts(q);
     q.disable();
     q.setText("Loading...");
     setQuill(q);
   }, []);
 
-  // Export functions
-  const exportToDoc = () => {
-    const quillContent = quill?.root.innerHTML; // Get Quill's HTML content
-    const docx = generate(quillContent); // Convert HTML to docx
-    const blob = new Blob([docx], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-    saveAs(blob, `${docName}.docx`); // Use docName as filename
-  };
+  //EDIT QUILL EDITOR AND TOOLBAR??
+  {
+    useEffect(() => {
+      const ele = document.getElementsByClassName(
+        "ql-editor"
+      )[0] as HTMLElement;
+      if (!ele) return;
+      ele.style.overflowY = "visible";
 
-  const exportToPDF = () => {
-    const quillElement = document.querySelector('.ql-editor'); // Quill's editable area
-    html2canvas(quillElement).then((canvas) => {
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      pdf.addImage(imgData, 'PNG', 0, 0);
-      pdf.save(`${docName}.pdf`); // Use docName as filename
+      ele.style.height = "fit-content";
+      ele.style.padding = "2em";
+    }, [quill]);
+  }
+
+  // UPDATE DOC PREVIEW
+  useEffect(() => {
+    const updateDocPreview = async () => {
+      const dataURL = await createThumbnail();
+      if (!dataURL) return;
+      try {
+        const res = await fetch(`${server}/update-doc-preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ documentId, dataURL }),
+        });
+        const result = await res.json();
+        if (!res.ok) {
+          toast.error(result.error);
+          console.log(result.error);
+          return;
+        }
+      } catch (err) {
+        console.log(err);
+      }
+    };
+    //Once on page render
+    setTimeout(async () => {
+      await updateDocPreview();
+    }, 2000);
+
+    const interval = setInterval(async () => {
+      await updateDocPreview();
+    }, DOC_PREVIEW_UPDATE_INTERVAL_MS);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [socket, quill]);
+
+  async function createThumbnail() {
+    if (!quill || !socket) return null;
+    return captureFirstPageAsImage(quill);
+  }
+
+  async function exportAsPDF() {
+    if (!quill) return;
+    const htmlContent = quill.root.innerHTML;
+
+    const promise = () =>
+      new Promise(async (resolve, reject) => {
+        try {
+          const response = await fetch("/api/generate-pdf", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ htmlContent, docName }),
+          });
+
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${docName || "document"}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            // Resolve promise with success message
+            resolve({
+              success: true,
+            });
+          } else {
+            // Reject promise with error message
+            reject(new Error(`Failed to export pdf. Try again later`));
+          }
+        } catch (err) {
+          reject("Failed to export document.Try again later!");
+        }
+      });
+
+    toast.promise(promise, {
+      loading: "Prepraing document to export...",
+      success: (data) => {
+        return "Document ready to export!";
+      },
+      error: (error) => {
+        return error.message; // Use error message from reject
+      },
     });
-  };
+  }
+
+  async function exportAsDocx() {
+    if (!quill) return;
+    const htmlContent = quill.root.innerHTML;
+
+    const promise = () =>
+      new Promise(async (resolve, reject) => {
+        try {
+          const response = await fetch("/api/generate-docx", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ htmlContent, docName }),
+          });
+
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${docName}.docx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            // Resolve promise with success message
+            resolve({
+              success: true,
+            });
+          } else {
+            // Reject promise with error message
+            reject(
+              new Error(`Failed to generate DOCX: ${response.statusText}`)
+            );
+          }
+        } catch (err) {
+          reject("Failed to export document.Try again later!");
+        }
+      });
+
+    toast.promise(promise, {
+      loading: "Prepraing document to export...",
+      success: (data) => {
+        return "Document ready to export!";
+      },
+      error: (error) => {
+        return error.message; // Use error message from reject
+      },
+    });
+  }
 
   return (
-    <div className="w-full">
-      <Navbar docname={docName} />
-      <div className="flex justify-between my-4">
-        <button onClick={exportToDoc} className="btn">
-          Export to DOC
-        </button>
-        <button onClick={exportToPDF} className="btn">
-          Export to PDF
-        </button>
+    <>
+      <div
+        className="w-full h-full bg-green-500 m-0 p-0"
+        id="TextEditorWrapper"
+      >
+        <Navbar docname={docName} />
+        <CustomToolbar  onColorChange={handleFontColorChange} exportAsDOCX={exportAsDocx} exportAsPDF={exportAsPDF}/>
+
+        <div
+          className="w-full h-[95%] m-0 p-0 overflow-hidden bg-[#F9FBFD] editor-wrapper"
+          ref={wrapperRef}
+        ></div>
       </div>
-      <div className="w-full" ref={wrapperRef}></div>
-    </div>
+      <div className="w-[24px] h-[24px] overflow-hidden rounded-md focus:border-none m-2 border-none scale">
+        
+      </div>
+
+
+
+    </>
   );
 }

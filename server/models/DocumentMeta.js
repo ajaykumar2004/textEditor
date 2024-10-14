@@ -9,6 +9,7 @@ const DocumentMetaSchema = new Schema({
     type: Date,
     default: Date.now, 
   },
+  preview_image: String
 });
 
 module.exports = model("DocumentMeta", DocumentMetaSchema);

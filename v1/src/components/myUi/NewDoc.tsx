@@ -40,6 +40,7 @@ export const NewDoc = ({ documentType }: Props) => {
         docName,
         docId,
         docDesc,
+        previewImg: null,
       };
 
       // TRY CREATING DOCUMENT
@@ -153,16 +154,16 @@ export const NewDoc = ({ documentType }: Props) => {
           <DialogFooter>
             <Button onClick={createDocumentHandler}>
               {isLoading ? "Creating your space..." : "Create"}
-              {isLoading ? <LoaderPinwheel className="animate-spin mr-2" size={16} /> : null}
+              {isLoading ? (
+                <LoaderPinwheel className="animate-spin mr-2" size={16} />
+              ) : null}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Display document type below the dialog */}
-      {documentType && (
-        <p className="text-sm font-medium">{documentType}</p>
-      )}
+      {documentType && <p className="text-sm font-medium">{documentType}</p>}
     </div>
   );
 };
