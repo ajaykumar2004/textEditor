@@ -1,6 +1,4 @@
 // Import required packages
-const cors = require("cors");
-const express = require("express");
 const mongoose = require("mongoose");
 const HTMLtoDOCX = require("html-to-docx");
 
@@ -177,22 +175,22 @@ app.post("/documents/:documentId/rollback/:versionNumber", async (req, res) => {
 });
 
 //HELPER FUNCTION TO CHECK IF A DOC-ID IS ALREADY PRESENT
-async function findDocumentMeta(id) {
-  if (id == null) return;
-  const document = await DocumentMeta.findById(id);
-  console.log(document);
-  if (document!=null) return true;
-  else return false;
-}
+// async function findDocumentMeta(id) {
+//   if (id == null) return;
+//   const document = await DocumentMeta.findById(id);
+//   console.log(document);
+//   if (document!=null) return true;
+//   else return false;
+// }
 
 // Helper function to find or create a document [UNUSED]
-async function findOrCreateDocument(id) {
-  if (id == null) return;
+// async function findOrCreateDocument(id) {
+//   if (id == null) return;
 
-  const document = await Document.findById(id);
-  if (document) return document;
-  return await Document.create({ _id: id, data: defaultValue });
-}
+//   const document = await Document.findById(id);
+//   if (document) return document;
+//   return await Document.create({ _id: id, data: defaultValue });
+// }
 // API route to generate DOCX from HTML content
 app.post("/generate-docx", async (req, res) => {
   const { htmlContent, documentName } = req.body;
