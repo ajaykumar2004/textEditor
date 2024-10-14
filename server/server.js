@@ -1,11 +1,12 @@
 const mongoose = require("mongoose");
 const Document = require("./models/Document");
 const DocumentMeta = require("./models/DocumentMeta");
+const DocumentHistory = require("./models/DocumentHistory");
 const express = require("express");
 const cors = require("cors");
 const app = express();
 
-mongoose.connect("mongodb+srv://ajaykumar30802004:AXqnzB0iH4M77NMM@cluster0.zhkna.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0", {
+mongoose.connect("mongodb+srv://ajaykumar30802004:tuL6GqxG0TNB3Leg@cluster.nfqk6.mongodb.net/?retryWrites=true&w=majority&appName=Cluster", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
   useFindAndModify: false,
@@ -35,7 +36,19 @@ io.on("connection", (socket) => {
       socket.broadcast.to(documentId).emit("receive-changes", delta);
     });
 
+    socket.on("save-version-document", async (data) => {
+      const currentVersionDocument= await Document.findById(documentId);
+      if(currentVersionDocument) {
+        const versionCount=await DocumentHistory.countDocuments({documentId});
+        await DocumentHistory.create({documentId,
+          version : versionCount+1,
+          data: currentVersionDocument.data,
+        })
+      }
+    });
+
     socket.on("save-document", async (data) => {
+      // then updating 
       await Document.findByIdAndUpdate(documentId, { data });
     });
   });
@@ -44,7 +57,7 @@ io.on("connection", (socket) => {
 // Document API route
 app.post("/document-meta", async (req, res) => {
   const {documentId}  = req.body;
-  console.log(documentId);
+  // console.log(documentId);
   try {
     const documents = await DocumentMeta.findById(documentId);
     console.log(documents);
@@ -57,8 +70,8 @@ app.post("/document-meta", async (req, res) => {
 
 app.get("/documents", async (req, res) => {
   try {
-    const documents = await DocumentMeta.find();
-    console.log(documents);
+    const documents = await DocumentMeta.find().sort({timestamp: -1});
+    // console.log(documents);
     res.json(documents);
   } catch (error) {
     res.status(500).json({ error: "Error fetching documents" });
@@ -92,7 +105,51 @@ app.post("/documents", async (req, res) => {
   }
 });
 
+// Document Version History API:
+// all version of document sorted from latest
+app.get("/documents/:documentId/versions",async (req, res) => {
+  const {documentId} = req.params;
+  try{
+    const version= await DocumentHistory.find({ documentId }).sort({version:-1});
+    res.json(version);
+  } catch(error){
+    res.status(500).json({
+      error: "Error fetching versions",
+    })
+  }
+})
+// specific version of document 
+app.get("/documents/:documentId/versions/:versionNumber",async (req,res)=>{
+  const {documentId , versionNumber} = req.params;
+  try{
+    const version = await DocumentHistory.findOne({documentId,version : versionNumber});
+    if(version){
+      res.json(version);
+    }
+    else{
+      res.status(404).json({error: "version not found"});
+    }
+  } catch(error) {
+    res.json(500).json({error: "Error fetching version"});
+  }
+})
 
+// Rollback to a specific version
+app.post("/documents/:documentId/rollback/:versionNumber", async (req, res) => {
+  const { documentId, versionNumber } = req.params;
+
+  try {
+    const version = await DocumentHistory.findOne({ documentId, version: versionNumber });
+    if (version) {
+      await Document.findByIdAndUpdate(documentId, { data: version.data });
+      res.json({ message: `Rolled back to version ${versionNumber}` });
+    } else {
+      res.status(404).json({ error: "Version not found" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Error during rollback" });
+  }
+});
 
 //HELPER FUNCTION TO CHECK IF A DOC-ID IS ALREADY PRESENT
 async function findDocumentMeta(id) {

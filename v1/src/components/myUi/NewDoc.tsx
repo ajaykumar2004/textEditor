@@ -105,10 +105,11 @@ export const NewDoc = ({ documentType }: Props) => {
                   setDocName(e.target.value);
                   setDocId(
                     e.target.value
+                      .trim() // Remove leading and trailing spaces
                       .toLowerCase() // Convert to lowercase
-                      .replaceAll(/\s+/g, "-") // Replace spaces with hyphens
-                      .replace(/[^a-z0-9\-]/g, "") // Remove all characters that are not letters, numbers, or hyphens
-                  );
+                      .replace(/\s+/g, "-") // Replace spaces with %20
+                      .replace(/[^a-z0-9%20]/g, "") // Remove all characters that are not letters, numbers, or %20
+                  );                                   
                 }}
               />
             </div>
@@ -126,10 +127,11 @@ export const NewDoc = ({ documentType }: Props) => {
                 onChange={(e) => {
                   setDocId(
                     e.target.value
+                      .trim() // Remove leading and trailing spaces
                       .toLowerCase() // Convert to lowercase
-                      .replaceAll(/\s+/g, "-") // Replace spaces with hyphens
-                      .replace(/[^a-z0-9\-]/g, "") // Remove all characters that are not letters, numbers, or hyphens
-                  );
+                      .replace(/\s+/g, "-") // Replace spaces with %20
+                      .replace(/[^a-z0-9%20]/g, "") // Remove all characters that are not letters, numbers, or %20
+                  );                                    
                 }}
               />
             </div>

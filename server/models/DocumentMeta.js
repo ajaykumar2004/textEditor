@@ -1,10 +1,14 @@
 const { Schema, model } = require("mongoose");
 
-const DocumentMeta = new Schema({
-  document_name: String,
-  document_description: String,
-  _id: String,
-  data: Object,
+const DocumentMetaSchema = new Schema({
+  document_name: { type: String, required: true }, 
+  document_description: { type: String, required: true }, 
+  _id: { type: String, required: true }, 
+  data: { type: Object }, 
+  timestamp: {
+    type: Date,
+    default: Date.now, 
+  },
 });
 
-module.exports = model("DocumentMeta", DocumentMeta);
+module.exports = model("DocumentMeta", DocumentMetaSchema);

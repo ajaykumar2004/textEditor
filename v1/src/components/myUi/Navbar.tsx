@@ -1,13 +1,10 @@
-/* eslint-disable react/jsx-key */
 import Image from "next/image";
 import logo from "../../../public/openSource.svg";
 import { Search } from "lucide-react";
 import { Avatar, AvatarImage } from "../ui/avatar";
 import Link from "next/link";
-import { Trie } from "../ds/trie";
 import React, { useEffect } from "react";
-
-const trie = new Trie();
+import { SuffixTree } from "../ds/suffixTree"; 
 
 type Props = {
   search_field?: boolean;
@@ -17,43 +14,47 @@ type Props = {
 export const Navbar = ({ search_field = false, docname }: Props) => {
   const [searchResults, setSearchResults] = React.useState<string[]>([]);
   const [query, setQuery] = React.useState<string>("");
+  const [suffixTree, setSuffixTree] = React.useState<SuffixTree | null>(null);
 
   useEffect(() => {
     const fetchDocs = async () => {
       try {
-        const datafromdb = await fetch("http://localhost:3002/documents");
-        const documents = await datafromdb.json();
-        documents.forEach((doc: { document_name: string }) => {
-          trie.insert(doc.document_name);
-        });
+        const response = await fetch("http://localhost:3002/documents");
+        const documentsData = await response.json();
+        const docNames = documentsData.map((doc: { document_name: string }) => doc.document_name);
+
+        const tree = new SuffixTree();
+        docNames.forEach((doc: string) => tree.insert(doc));
+        setSuffixTree(tree);
       } catch (error) {
         console.error(error);
       }
     };
+
     fetchDocs();
   }, []);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
     setQuery(query);
-    
-    console.time('Search Time'); 
-    
-    if (query.length > 0) {
-      const results = trie.search(query);
+
+    console.time("Search Time");
+
+    if (query.length > 0 && suffixTree) {
+      const results = suffixTree.search(query);
       setSearchResults(results);
     } else {
       setSearchResults([]);
     }
-    
-    console.timeEnd('Search Time'); 
+
+    console.timeEnd("Search Time");
   };
 
   return (
     <div className="w-full bg-zinc-950 text-white h-[70px] flex justify-between items-center pr-5 relative">
       <div className="flex pl-5 justify-start items-center gap-4">
         <div className="logo w-[35px] h-[35px] text-white">
-          <Link href={'/'}>
+          <Link href={"/"}>
             <Image src={logo} alt="logo" />
           </Link>
         </div>
